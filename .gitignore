@@ -93,3 +93,4 @@ iOSInjectionProject/
 docs/updates/**/*.dmg
 docs/updates/**/*.app
 docs/updates/**/*.xml
+.DS_Store

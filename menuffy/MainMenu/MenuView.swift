@@ -10,11 +10,24 @@ import Cocoa
 
 class MenuView: NSView {
     var appMenu: NSMenu = NSMenu()
-    private (set) public var allElements: [AXUIElement] = []
     var allMenuItems: [NSMenuItem] = []
     var filterdMenuItems: [NSMenuItem] = []
-    var menuIndex: Int = 0
     var topLevelMenuNum: Int = 0
+    var pid: pid_t!
+    var triggerItem: String?
+
+    init(pid: pid_t, triggerItem: String? = nil) {
+        self.pid = pid
+        self.triggerItem = triggerItem
+        super.init(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        if triggerItem != nil {
+            makeMenu()
+        }
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
 
     // 検索用フィールドからフォーカスを移すために必要なフラグ
     override var acceptsFirstResponder: Bool {
@@ -22,9 +35,7 @@ class MenuView: NSView {
     }
 
     func increment(element: AXUIElement, menuItem: NSMenuItem) {
-        allElements.append(element)
         allMenuItems.append(menuItem)
-        menuIndex += 1
     }
 
     func filterMenuItem(keyword: String) {
@@ -56,13 +67,11 @@ class MenuView: NSView {
     }
 
     func reset() {
-        allElements = []
         allMenuItems = []
-        menuIndex = 0
         topLevelMenuNum = 0
     }
 
-    func makeMenu(_ pid: pid_t) {
+    func makeMenu() {
         reset()
 
         let searchItem = SearchMenuItem()
@@ -73,7 +82,9 @@ class MenuView: NSView {
         topLevelMenuNum = items.count
         buildAllMenu(items)
 
-        appMenu.popUp(positioning: nil, at: NSPoint.zero, in: self)
+        if triggerItem == nil {
+            appMenu.popUp(positioning: nil, at: NSPoint.zero, in: self)
+        }
     }
 
     func getMenuItems(_ pid: pid_t) -> [AXUIElement] {
@@ -95,22 +106,22 @@ class MenuView: NSView {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             appMenu.addItem(item)
 
-            buildSubMenu(mainElement: element, mainMenuItesm: item)
+            buildSubMenu(mainElement: element, mainMenuItesm: item, parent: title)
         }
     }
 
-    func buildSubMenu(mainElement: AXUIElement, mainMenuItesm: NSMenuItem) {
+    func buildSubMenu(mainElement: AXUIElement, mainMenuItesm: NSMenuItem, parent: String) {
         let subMenu = NSMenu()
         mainMenuItesm.submenu = subMenu
 
         let subElements = getChildren(mainElement)
         for subElement in subElements {
             let subMenuItems = getChildren(subElement)
-            buildSubMenuItems(subMenuItemsElements: subMenuItems, subMenu: subMenu)
+            buildSubMenuItems(subMenuItemsElements: subMenuItems, subMenu: subMenu, parent: parent)
         }
     }
 
-    func buildSubMenuItems(subMenuItemsElements: [AXUIElement], subMenu: NSMenu) {
+    func buildSubMenuItems(subMenuItemsElements: [AXUIElement], subMenu: NSMenu, parent: String) {
         for element in subMenuItemsElements {
             let position = getAttribute(element: element, name: kAXPositionAttribute)
             let title = getTitle(element)
@@ -122,21 +133,28 @@ class MenuView: NSView {
             if title == "" {
                 subMenu.addItem(NSMenuItem.separator())
             } else {
+                if triggerItem == parent + "→" + title {
+                    let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
+                    if error != AXError.success {
+                        print("failed to lauch \(triggerItem), \(error)")
+                    }
+                    return
+                }
                 let subMenuItem = NSMenuItem(title: title, action: #selector(AppDelegate.pressMenu), keyEquivalent: "")
-                subMenuItem.tag = menuIndex
+                subMenuItem.representedObject = [parent + "→" + title: element] as KeyValuePairs
                 increment(element: element, menuItem: subMenuItem)
                 subMenu.addItem(subMenuItem)
 
                 let lastMenuItems = getChildren(element)
                 if lastMenuItems.count > 0 {
-                    buildLastMenu(subElement: lastMenuItems[0], subMenuItesm: subMenuItem)
+                    buildLastMenu(subElement: lastMenuItems[0], subMenuItesm: subMenuItem, parent: parent + "→" + title)
                 }
             }
 
         }
     }
 
-    func buildLastMenu(subElement: AXUIElement, subMenuItesm: NSMenuItem) {
+    func buildLastMenu(subElement: AXUIElement, subMenuItesm: NSMenuItem, parent: String) {
         let lastMenu = NSMenu()
         subMenuItesm.submenu = lastMenu
 
@@ -153,8 +171,15 @@ class MenuView: NSView {
             if title == "" {
                 lastMenu.addItem(NSMenuItem.separator())
             } else if enabled {
+                if triggerItem == parent + "→" + title {
+                    let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
+                    if error != AXError.success {
+                        print("failed to lauch \(triggerItem), \(error)")
+                    }
+                    return
+                }
                 let lastMenuItem = NSMenuItem(title: title, action: #selector(AppDelegate.pressMenu), keyEquivalent: "")
-                lastMenuItem.tag = menuIndex
+                lastMenuItem.representedObject = [parent + "→" + title: element] as KeyValuePairs
                 increment(element: element, menuItem: lastMenuItem)
                 lastMenu.addItem(lastMenuItem)
             } else {

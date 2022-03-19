@@ -67,10 +67,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let location = NSEvent.mouseLocation
         menuWindow = MenuWindow(locationX: location.x, locationY: location.y)
 
-        menuView = MenuView()
+        menuView = MenuView(pid: pid)
         menuView.appMenu.delegate = self
         menuWindow.contentView?.addSubview(menuView)
-        menuView.makeMenu(pid)
+        menuView.makeMenu()
     }
 
     func showAccesibilityModal() {
@@ -97,7 +97,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // TODO: なぜかここにセレクタのメソッドがないとメニューが有効にならない、あとで調べる
     @objc func pressMenu(sender: NSMenuItem) {
-        AXUIElementPerformAction(menuView.allElements[sender.tag], kAXPressAction as CFString)
+        let element = sender.representedObject as! KeyValuePairs<String, AXUIElement> // swiftlint:disable:this force_cast
+        let error = AXUIElementPerformAction(element[0].value, kAXPressAction as CFString)
+        if error == AXError.success {
+            return
+        }
+        print("could not call \(element[0].key), rebuilding menu and try again... \(error)")
+        let app = activeApp()
+        let pid = app.processIdentifier
+        menuView = MenuView(pid: pid, triggerItem: element[0].key)
     }
 
     @objc func quit(sender: NSButton) {
